@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>User Settings</title>
+</head>
+<body>
+    <h1>User Settings</h1>
+    <form action="/settings" method="post">
+        <select name="notification_day">
+            <option value="monday">Monday</option>
+            <option value="tuesday">Tuesday</option>
+            <!-- Add options for all days of the week -->
+        </select><br>
+        <select name="notification_option">
+            <option value="event_day">Notify on Event Day</option>
+            <option value="weekly_summary">Notify in Weekly Summary</option>
+        </select><br>
+        <button type="submit">Update Settings</button>
+    </form>
+</body>
+</html>

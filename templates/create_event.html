@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Create Event</title>
+</head>
+<body>
+    <h1>Create Event</h1>
+    <form action="/create_event" method="post">
+        <input type="text" name="title" placeholder="Event Title" required><br>
+        <textarea name="description" placeholder="Event Description" required></textarea><br>
+        <input type="date" name="date" required><br>
+        <input type="time" name="time" required><br>
+        <select name="notification_option">
+            <option value="event_day">Notify on Event Day</option>
+            <option value="weekly_summary">Notify in Weekly Summary</option>
+        </select><br>
+        <button type="submit">Create Event</button>
+    </form>
+</body>
+</html>
