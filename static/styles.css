@@ -1,0 +1,125 @@
+/* Center the site content */
+body {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  margin: 0;
+}
+
+/* Navbar */
+.navbar {
+  background-color: #f3f3f3;
+  width: 200px;
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100%;
+  overflow: auto;
+  transition: width 0.3s ease-in-out;
+  z-index: 999;
+}
+
+.navbar ul {
+  list-style-type: none;
+  padding: 0;
+  margin: 0;
+}
+
+.navbar ul li {
+  padding: 10px;
+}
+
+.navbar ul li a {
+  text-decoration: none;
+  color: #333;
+}
+
+.navbar ul li a:hover {
+  background-color: #ddd;
+}
+
+/* Main content */
+.main-content {
+  margin-left: 200px; /* Adjust the margin to accommodate the navbar width */
+}
+
+/* Add padding to the content area */
+.content {
+  padding: 20px;
+}
+
+/* Toggle button */
+.toggle-button {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 1000;
+  padding: 5px 10px;
+  background-color: #007bff;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+}
+
+/* Navbar expanded state */
+.navbar.expanded {
+  width: 100px;
+}
+
+/* Content expanded state */
+.content.expanded {
+  margin-left: 100px;
+}
+
+/* Hide the navbar by default */
+.navbar.hide {
+  display: none;
+}
+
+/* Custom Styles */
+
+body {
+  background-color: #f8f8f8;
+  color: #333333;
+}
+
+.container {
+  margin-top: 40px;
+}
+
+h1 {
+  color: #007bff;
+}
+
+.btn-primary {
+  background-color: #007bff;
+  border-color: #007bff;
+}
+
+.btn-primary:hover {
+  background-color: #0056b3;
+  border-color: #0056b3;
+}
+
+.btn-secondary {
+  background-color: #6c757d;
+  border-color: #6c757d;
+}
+
+.btn-secondary:hover {
+  background-color: #343a40;
+  border-color: #343a40;
+}
+
+.alert-success {
+  background-color: #28a745;
+  color: #ffffff;
+}
+
+.alert-error {
+  background-color: #dc3545;
+  color: #ffffff;
+}
+
+/* Add any additional custom styles here */

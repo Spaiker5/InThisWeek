@@ -1,0 +1,67 @@
+/* styles.css */
+
+/* Set primary and secondary colors to orange */
+:root {
+    --primary-color: #FF9800;
+    --secondary-color: #FF5722;
+}
+
+/* Override default MDB styles */
+body {
+    background-color: #ffffff;
+    color: #333333;
+}
+
+.container {
+    margin-top: 40px;
+}
+
+h1 {
+    color: var(--primary-color);
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.btn-primary:hover {
+    background-color: var(--secondary-color);
+    border-color: var(--secondary-color);
+}
+
+.btn-secondary {
+    background-color: var(--secondary-color);
+    border-color: var(--secondary-color);
+}
+
+.btn-secondary:hover {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.alert-success {
+    background-color: var(--primary-color);
+    color: #ffffff;
+}
+
+.alert-error {
+    background-color: var(--secondary-color);
+    color: #ffffff;
+}
+
+/* Custom styles for date picker */
+.datepicker {
+    position: relative;
+    z-index: 10000;
+}
+
+.datepicker .input-group-append {
+    position: relative;
+    z-index: 10001;
+}
+
+/* Fix for the calendar not appearing */
+.ui-datepicker-trigger {
+    cursor: pointer;
+}
