@@ -1,1 +1,1 @@
-web: gunicorn main:in_this_week
+web: gunicorn main:app
