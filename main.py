@@ -13,7 +13,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///events.db'
 app.config['SECRET_KEY'] = 'your-secret-key'
 
 # Configure Flask-Mail
-app.config['MAIL_SERVER']='sandbox.smtp.mailtrap.io'
+app.config['MAIL_SERVER'] = 'sandbox.smtp.mailtrap.io'
 app.config['MAIL_PORT'] = 2525
 app.config['MAIL_USERNAME'] = '0d8ef3841b0201'
 app.config['MAIL_PASSWORD'] = 'bc837fdb24bda4'
@@ -54,6 +54,8 @@ class User(db.Model):
 
     def get_notification_day(self):
         return self.notification_day.capitalize()
+
+
 # Define the Event model
 class Event(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -71,6 +73,7 @@ class Event(db.Model):
 # Set up scheduler
 scheduler = BackgroundScheduler()
 
+
 def schedule_notification(event, time_delta):
     notification_date = event.date - time_delta
     notification_day = event.user.notification_day.lower()
@@ -79,7 +82,6 @@ def schedule_notification(event, time_delta):
     job_id = f'event_notification_{event.id}_{time_delta.days}'
     scheduler.add_job(send_notification, 'date', args=[event.id], run_date=notification_date, id=job_id)
     return job_id
-
 
 
 def send_notification(event_id):
@@ -133,9 +135,6 @@ def send_notification(event_id):
     print(f"event_id: {event_id}")
     print(f"user: {user}")
     print(f"upcoming_events: {upcoming_events}")
-
-
-
 
 
 @app.before_request
@@ -283,7 +282,6 @@ def profile():
         return redirect(url_for('index'))
 
 
-
 @app.route('/change-notification-day', methods=['POST'])
 def change_notification_day():
     if 'user_id' not in session:
@@ -304,6 +302,7 @@ def change_notification_day():
             return jsonify({'error': 'Invalid form data'})
 
     return jsonify({'error': 'User not found'})
+
 
 @app.route('/send_test_notification', methods=['GET'])
 def send_test_notification():
@@ -537,4 +536,4 @@ def reset_password(token):
 
 
 if __name__ == '__main__':
-    app.run()
+    app.run(port=int(os.environ.get('PORT', 5000)))
