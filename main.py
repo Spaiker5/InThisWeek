@@ -5,15 +5,32 @@ from forms import *
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask_wtf.csrf import CSRFProtect
+from flask_mail import Message, Mail
+from datetime import date
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///events.db'
+app.config['SECRET_KEY'] = 'your-secret-key'
 
-init_app(app)
+# Configure Flask-Mail
+app.config['MAIL_SERVER']='sandbox.smtp.mailtrap.io'
+app.config['MAIL_PORT'] = 2525
+app.config['MAIL_USERNAME'] = '0d8ef3841b0201'
+app.config['MAIL_PASSWORD'] = 'bc837fdb24bda4'
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USE_SSL'] = False
+
+mail = Mail(app)
+
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
 csrf = CSRFProtect(app)
+
+# Initialize the scheduler
+scheduler = BackgroundScheduler()
+scheduler.start()
+
+init_app(app)
 
 
 class User(db.Model):
@@ -35,7 +52,8 @@ class User(db.Model):
     def set_password(self, password):
         self.password = bcrypt.generate_password_hash(password).decode('utf-8')
 
-
+    def get_notification_day(self):
+        return self.notification_day.capitalize()
 # Define the Event model
 class Event(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -43,6 +61,8 @@ class Event(db.Model):
     description = db.Column(db.Text, nullable=False)
     date = db.Column(db.Date, nullable=False)
     notify_on_event_day = db.Column(db.Boolean, nullable=False)
+    monthly_notification = db.Column(db.Boolean, nullable=False)
+    weekly_notification = db.Column(db.Boolean, nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
     user = db.relationship('User', backref=db.backref('events', lazy=True))
@@ -50,6 +70,72 @@ class Event(db.Model):
 
 # Set up scheduler
 scheduler = BackgroundScheduler()
+
+def schedule_notification(event, time_delta):
+    notification_date = event.date - time_delta
+    notification_day = event.user.notification_day.lower()
+    while notification_date.strftime('%A').lower() != notification_day:
+        notification_date -= timedelta(days=1)
+    job_id = f'event_notification_{event.id}_{time_delta.days}'
+    scheduler.add_job(send_notification, 'date', args=[event.id], run_date=notification_date, id=job_id)
+    return job_id
+
+
+
+def send_notification(event_id):
+    event = Event.query.get(event_id)
+    user = event.user
+
+    # Get the current date
+    today = date.today()
+
+    # Calculate the start and end dates for the upcoming week
+    start_of_week = today - timedelta(days=today.weekday())
+    end_of_week = start_of_week + timedelta(days=6)
+
+    # Get all events in the upcoming week with comments
+    upcoming_events = Event.query.filter(
+        Event.user_id == user.id,
+        Event.date >= start_of_week,
+        Event.date <= end_of_week,
+        Event.description != ""
+    ).order_by(Event.date).all()
+
+    # Create a list to store the events for the email
+    email_events = []
+
+    # Add upcoming events to the email_events list
+    if upcoming_events:
+        email_events.append("Upcoming events for the week:")
+        for event in upcoming_events:
+            email_events.append(f"- {event.title} ({event.date})")
+
+    # Check if there are any events to include in the email
+    if email_events:
+        # Render the email template with the event details
+        email_content = render_template('notification_email.html', user=user, events=email_events)
+
+        # Create the email message
+        msg = Message("Weekly Event Notification", sender="your-email@example.com", recipients=[user.email])
+        msg.html = email_content
+
+        try:
+            # Send the email
+            mail.send(msg)
+            flash('Email notification sent successfully!', 'success')
+        except Exception as e:
+            flash('Failed to send email notification.', 'error')
+            print(str(e))
+    else:
+        flash('No upcoming events with comments to notify.', 'info')
+
+    # Debugging information
+    print(f"event_id: {event_id}")
+    print(f"user: {user}")
+    print(f"upcoming_events: {upcoming_events}")
+
+
+
 
 
 @app.before_request
@@ -89,8 +175,8 @@ def inject_current_user():
     user_id = session.get('user_id')
     if user_id:
         user = User.query.get(user_id)
-        return {'current_user': user}
-    return {}
+        return {'current_user': user, 'logged_in': True}
+    return {'logged_in': False}
 
 
 @app.route('/')
@@ -160,14 +246,20 @@ def dashboard():
     user = load_user(session['user_id'])
 
     if user is not None:
-        events = user.events
-        return render_template('dashboard.html', user=user, events=events)
+        # Get all upcoming events with comments
+        upcoming_events = Event.query.filter(
+            Event.user_id == user.id,
+            Event.date >= date.today(),
+            Event.description != ""
+        ).order_by(Event.date).all()
+
+        return render_template('dashboard.html', user=user, events=upcoming_events)
     else:
         flash('User not found. Please log in.', 'error')
         return redirect(url_for('login'))
 
 
-@app.route('/profile')
+@app.route('/profile', methods=['GET', 'POST'])
 def profile():
     if 'user_id' not in session:
         flash('Please log in to view your profile.', 'error')
@@ -176,11 +268,122 @@ def profile():
     user_id = session['user_id']
     user = User.query.get(user_id)
 
+    form = ChangeNotificationDayForm()
+
+    if form.validate_on_submit():
+        user.notification_day = form.notification_day.data
+        db.session.commit()
+        flash('Notification day updated successfully!', 'success')
+        return redirect(url_for('profile'))
+
     if user:
-        return render_template('profile.html', user=user)
+        return render_template('profile.html', user=user, form=form)
     else:
         flash('User not found.', 'error')
         return redirect(url_for('index'))
+
+
+
+@app.route('/change-notification-day', methods=['POST'])
+def change_notification_day():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Please log in to change notification day'})
+
+    user_id = session['user_id']
+    user = User.query.get(user_id)
+
+    if user:
+        form = ChangeNotificationDayForm()
+
+        if form.validate_on_submit():
+            user.notification_day = form.notification_day.data
+            db.session.commit()
+            flash('Notification day updated successfully!', 'success')
+            return redirect(url_for('profile'))
+        else:
+            return jsonify({'error': 'Invalid form data'})
+
+    return jsonify({'error': 'User not found'})
+
+@app.route('/send_test_notification', methods=['GET'])
+def send_test_notification():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    user_id = session['user_id']
+    user = User.query.get(user_id)
+
+    if user:
+        # Create a test event for the current day
+        test_event = Event(
+            title='Test Event',
+            description='This is a test event',
+            date=datetime.now().date(),
+            notify_on_event_day=False,
+            monthly_notification=False,
+            weekly_notification=False,
+            user_id=user.id
+        )
+        db.session.add(test_event)
+        db.session.commit()
+
+        # Schedule the test event notification
+        schedule_notification(test_event, timedelta(days=0))
+
+        # Manually trigger the notification for the test event
+        send_notification(test_event.id)
+
+        flash('Test email notification sent successfully!', 'success')
+    else:
+        flash('User not found.', 'error')
+
+    return redirect(url_for('profile'))
+
+
+@app.route('/send_notification_manually')
+def send_notification_manually():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    user_id = session['user_id']
+    user = User.query.get(user_id)
+
+    if user:
+        # Get all future events for the user from the current day
+        current_day = datetime.now().date()
+        future_events = Event.query.filter(
+            Event.user_id == user.id,
+            Event.date >= current_day
+        ).order_by(Event.date).all()
+
+        # Create a list to store the events for the email
+        email_events = []
+
+        # Add future events to the email_events list
+        if future_events:
+            email_events.append("Future events:")
+            for event in future_events:
+                email_events.append(f"- {event.title} ({event.date})")
+
+            # Render the email template with the event details
+            email_content = render_template('notification_email.html', user=user, events=email_events)
+
+            # Create the email message
+            msg = Message("Test Event Notification", sender='inthisweeknotification@gmail.com')
+            try:
+                # Send the email
+                mail.send(msg)
+                flash('Test email notification sent successfully!', 'success')
+                print("Sent!")
+            except Exception as e:
+                flash('Failed to send test email notification.', 'error')
+                print(str(e))
+                print("not sent :(")
+            else:
+                flash('No future events to notify.', 'info')
+                print("else?")
+
+            return redirect(url_for('dashboard'))
 
 
 @app.route('/create_event', methods=['GET', 'POST'])
@@ -203,11 +406,20 @@ def create_event():
                 description=form.description.data,
                 date=datetime.strptime(form.date.data, '%Y-%m-%d').date(),
                 user_id=session['user_id'],
-                notify_on_event_day=form.notify_on_event_day.data
-
+                notify_on_event_day=form.notify_on_event_day.data,
+                monthly_notification=form.monthly_notification.data,
+                weekly_notification=form.weekly_notification.data
             )
             db.session.add(event)
             db.session.commit()
+
+            # Schedule notifications if enabled
+            if form.notify_on_event_day.data:
+                schedule_notification(event, timedelta(days=0))
+            if form.monthly_notification.data:
+                schedule_notification(event, timedelta(days=30))
+            if form.weekly_notification.data:
+                schedule_notification(event, timedelta(days=7))
 
             flash('Event created successfully!', 'success')
             return redirect(url_for('dashboard'))
@@ -222,6 +434,9 @@ def delete_event(event_id):
 
     event = Event.query.get(event_id)
     if event and event.user_id == session['user_id']:
+        # Remove scheduled notifications
+        scheduler.remove_job(f'event_notification_{event.id}')
+
         db.session.delete(event)
         db.session.commit()
         flash('Event deleted successfully!', 'success')

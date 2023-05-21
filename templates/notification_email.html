@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+
+{% block content %}
+  <h2>Weekly Event Notification</h2>
+  <p>Hello {{ user.username }},</p>
+  {% if events %}
+    <p>Here are the upcoming events for the week:</p>
+    <ul>
+      {% for event in events %}
+        <li>{{ event }}</li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>There are no upcoming events with comments to notify.</p>
+  {% endif %}
+{% endblock %}

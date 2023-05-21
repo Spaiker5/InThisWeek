@@ -23,9 +23,21 @@
             </div>
         </div>
 
-        <div class="form-group">
-            {{ form.notify_on_event_day.label }} {{ form.notify_on_event_day() }}
+        <div class="form-check">
+            {{ form.notify_on_event_day(class="form-check-input", id="notifyOnEventDay") }}
+            <label class="form-check-label" for="notifyOnEventDay">{{ form.notify_on_event_day.label }}</label>
         </div>
+
+        <div class="form-check">
+            {{ form.monthly_notification(class="form-check-input", id="monthly_notification") }}
+            <label class="form-check-label" for="monthly_notification">{{ form.monthly_notification.label }}</label>
+        </div>
+
+        <div class="form-check">
+            {{ form.weekly_notification(class="form-check-input", id="weekly_notification") }}
+            <label class="form-check-label" for="weekly_notification">{{ form.weekly_notification.label }}</label>
+        </div>
+
         <button type="submit" class="btn btn-primary">Create</button>
     </form>
 </div>

@@ -25,12 +25,15 @@ class RegisterForm(FlaskForm):
     ], validators=[DataRequired()])
 
 
-
 class CreateEventForm(FlaskForm):
     title = StringField('Title', validators=[DataRequired()])
     description = TextAreaField('Description', validators=[DataRequired()])
     date = StringField('Date', validators=[DataRequired()])
-    notify_on_event_day = BooleanField('Notify on Event Day')
+    notify_on_event_day = BooleanField('Notify on event day')
+    monthly_notification = BooleanField('Notify monthly')
+    weekly_notification = BooleanField('Notify weekly')
+
+
 
 class ChangePasswordForm(FlaskForm):
     current_password = PasswordField('Current Password', validators=[DataRequired()])
@@ -53,6 +56,10 @@ class ResetPasswordForm(FlaskForm):
     password = PasswordField('New Password', validators=[DataRequired()])
     confirm_password = PasswordField('Confirm Password', validators=[DataRequired(), EqualTo('password')])
     submit = SubmitField('Reset Password')
+
+class ChangeNotificationDayForm(FlaskForm):
+    notification_day = SelectField('Notification Day', choices=[('Monday', 'Monday'), ('Tuesday', 'Tuesday'), ('Wednesday', 'Wednesday'), ('Thursday', 'Thursday'), ('Friday', 'Friday'), ('Saturday', 'Saturday'), ('Sunday', 'Sunday')], validators=[DataRequired()])
+    submit = SubmitField('Save Changes')
 
 
 def init_app(app):

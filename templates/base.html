@@ -15,16 +15,27 @@
 <div class="content">
     <nav class="navbar">
         <ul>
-            <li><a href="{{ url_for('login') }}">Login</a></li>
-            <li><a href="{{ url_for('register') }}">Register</a></li>
-            <li><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
-            <li><a href="{{ url_for('create_event') }}">New Event</a></li>
-            <li><a href="{{ url_for('profile') }}">Profile</a></li>
+            {% if not logged_in %}
+                <li><a href="{{ url_for('login') }}">Login</a></li>
+                <li><a href="{{ url_for('register') }}">Register</a></li>
+            {% else %}
+                <li><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
+                <li><a href="{{ url_for('create_event') }}">New Event</a></li>
+                <li><a href="{{ url_for('profile') }}">Profile</a></li>
+            {% endif %}
         </ul>
     </nav>
 
     {% block content %}
     {% endblock %}
+    {% with messages = get_flashed_messages() %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="flash-message">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
 </div>
 
 <!-- JavaScript scripts -->
