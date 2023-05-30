@@ -7,6 +7,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from flask_wtf.csrf import CSRFProtect
 from flask_mail import Message, Mail
 from datetime import date
+from sqlalchemy import true, false
+import calendar
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///events.db'
@@ -61,6 +63,7 @@ class Event(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text, nullable=False)
+    money = db.Column(db.Integer, nullable=False)
     date = db.Column(db.Date, nullable=False)
     notify_on_event_day = db.Column(db.Boolean, nullable=False)
     monthly_notification = db.Column(db.Boolean, nullable=False)
@@ -76,65 +79,107 @@ scheduler = BackgroundScheduler()
 
 def schedule_notification(event, time_delta):
     notification_date = event.date - time_delta
-    notification_day = event.user.notification_day.lower()
-    while notification_date.strftime('%A').lower() != notification_day:
-        notification_date -= timedelta(days=1)
-    job_id = f'event_notification_{event.id}_{time_delta.days}'
-    scheduler.add_job(send_notification, 'date', args=[event.id], run_date=notification_date, id=job_id)
-    return job_id
+
+    # Check if the event should be notified weekly
+    if event.weekly_notification:
+        notification_date = event.date - time_delta
+        scheduler.add_job(send_notification, 'date', run_date=notification_date, args=[event.id])
+
+    # Check if the event should be notified monthly
+    if event.monthly_notification:
+        next_occurrence = event.date + time_delta
+        scheduler.add_job(send_notification, 'date', run_date=next_occurrence, args=[event.id])
+
+
+def get_upcoming_events(user):
+    today = date.today()
+    next_seven_days = today + timedelta(days=7)
+
+    upcoming_events = Event.query.filter(
+        Event.user_id == user.id,
+        (Event.date >= today) | ((Event.date < today) & (Event.weekly_notification == true())) | (
+                (Event.date < today) & (Event.monthly_notification == true()))
+    ).all()
+
+    return upcoming_events
+
+
+def get_weekly_notifications(user):
+    today = date.today()
+    next_seven_days = today + timedelta(days=7)
+
+    weekly_events = Event.query.filter(
+        Event.user_id == user.id
+    ).all()
+
+    weekly_notifications = {}
+
+    for event in weekly_events:
+        notification_day = event.user.notification_day.lower()
+        if notification_day not in weekly_notifications:
+            weekly_notifications[notification_day] = []
+        weekly_notifications[notification_day].append(event)
+
+    upcoming_weekly_events = []
+
+    for notification_day, events in weekly_notifications.items():
+        for event in events:
+            event_date = event.date
+            while event_date <= next_seven_days:
+                if today <= event_date:
+                    upcoming_weekly_events.append(event)
+                event_date += timedelta(days=7)
+
+    upcoming_weekly_events.sort(key=lambda x: x.date)
+
+    return upcoming_weekly_events
+
+
+def get_monthly_notifications(user):
+    today = date.today()
+    next_seven_days = today + timedelta(days=7)
+
+    monthly_events = Event.query.filter(
+        Event.user_id == user.id
+    ).all()
+
+    upcoming_monthly_events = []
+
+    for event in monthly_events:
+        event_date = event.date
+        while event_date <= next_seven_days:
+            if today <= event_date:
+                upcoming_monthly_events.append(event)
+            # Calculate the next occurrence by adding one month to the event date
+            year = event_date.year + (event_date.month + 1) // 12
+            month = (event_date.month + 1) % 12 or 12
+            day = min(event_date.day, calendar.monthrange(year, month)[1])
+            event_date = event_date.replace(year=year, month=month, day=day)
+
+    upcoming_monthly_events.sort(key=lambda x: x.date)
+
+    return upcoming_monthly_events
 
 
 def send_notification(event_id):
     event = Event.query.get(event_id)
     user = event.user
 
-    # Get the current date
-    today = date.today()
+    # Get the event value
+    event_value = event.money
 
-    # Calculate the start and end dates for the upcoming week
-    start_of_week = today - timedelta(days=today.weekday())
-    end_of_week = start_of_week + timedelta(days=6)
+    # Create the email message
+    msg = Message("Event Notification", recipients=[user.email])
 
-    # Get all events in the upcoming week with comments
-    upcoming_events = Event.query.filter(
-        Event.user_id == user.id,
-        Event.date >= start_of_week,
-        Event.date <= end_of_week,
-        Event.description != ""
-    ).order_by(Event.date).all()
+    # Render the email template with the event details
+    msg.html = render_template(
+        "notification_email.html",
+        event=event,
+        event_value=event_value
+    )
 
-    # Create a list to store the events for the email
-    email_events = []
-
-    # Add upcoming events to the email_events list
-    if upcoming_events:
-        email_events.append("Upcoming events for the week:")
-        for event in upcoming_events:
-            email_events.append(f"- {event.title} ({event.date})")
-
-    # Check if there are any events to include in the email
-    if email_events:
-        # Render the email template with the event details
-        email_content = render_template('notification_email.html', user=user, events=email_events)
-
-        # Create the email message
-        msg = Message("Weekly Event Notification", sender="your-email@example.com", recipients=[user.email])
-        msg.html = email_content
-
-        try:
-            # Send the email
-            mail.send(msg)
-            flash('Email notification sent successfully!', 'success')
-        except Exception as e:
-            flash('Failed to send email notification.', 'error')
-            print(str(e))
-    else:
-        flash('No upcoming events with comments to notify.', 'info')
-
-    # Debugging information
-    print(f"event_id: {event_id}")
-    print(f"user: {user}")
-    print(f"upcoming_events: {upcoming_events}")
+    # Send the email
+    mail.send(msg)
 
 
 @app.before_request
@@ -181,6 +226,30 @@ def inject_current_user():
 @app.route('/')
 def index():
     return render_template('index.html')
+
+
+@app.route('/profile', methods=['GET', 'POST'])
+def profile():
+    if 'user_id' not in session:
+        flash('Please log in to view your profile.', 'error')
+        return redirect('/login')
+
+    user_id = session['user_id']
+    user = User.query.get(user_id)
+
+    form = ChangeNotificationDayForm()
+
+    if form.validate_on_submit():
+        user.notification_day = form.notification_day.data
+        db.session.commit()
+        flash('Notification day updated successfully!', 'success')
+        return redirect(url_for('profile'))
+
+    if user:
+        return render_template('profile.html', user=user, form=form)
+    else:
+        flash('User not found.', 'error')
+        return redirect(url_for('index'))
 
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -245,41 +314,25 @@ def dashboard():
     user = load_user(session['user_id'])
 
     if user is not None:
-        # Get all upcoming events with comments
-        upcoming_events = Event.query.filter(
-            Event.user_id == user.id,
-            Event.date >= date.today(),
-            Event.description != ""
-        ).order_by(Event.date).all()
+        # Get upcoming events with comments
+        upcoming_events = get_upcoming_events(user)
 
-        return render_template('dashboard.html', user=user, events=upcoming_events)
+        # Get upcoming weekly notifications
+        upcoming_weekly_events = get_weekly_notifications(user)
+
+        # Get upcoming monthly notifications
+        upcoming_monthly_events = get_monthly_notifications(user)
+
+        # Calculate the value of money from events in the next 7 days and 30 days
+        value_7_days = sum(event.money for event in upcoming_events if event.date <= date.today() + timedelta(days=7))
+        value_30_days = sum(event.money for event in upcoming_events if event.date <= date.today() + timedelta(days=30))
+
+        return render_template('dashboard.html', user=user, events=upcoming_events,
+                               weekly_events=upcoming_weekly_events, monthly_events=upcoming_monthly_events,
+                               value_7_days=value_7_days, value_30_days=value_30_days)
     else:
-        flash('User not found. Please log in.', 'error')
-        return redirect(url_for('login'))
-
-
-@app.route('/profile', methods=['GET', 'POST'])
-def profile():
-    if 'user_id' not in session:
-        flash('Please log in to view your profile.', 'error')
-        return redirect('/login')
-
-    user_id = session['user_id']
-    user = User.query.get(user_id)
-
-    form = ChangeNotificationDayForm()
-
-    if form.validate_on_submit():
-        user.notification_day = form.notification_day.data
-        db.session.commit()
-        flash('Notification day updated successfully!', 'success')
-        return redirect(url_for('profile'))
-
-    if user:
-        return render_template('profile.html', user=user, form=form)
-    else:
-        flash('User not found.', 'error')
-        return redirect(url_for('index'))
+        flash('User not found')
+    return redirect(url_for('login'))
 
 
 @app.route('/change-notification-day', methods=['POST'])
@@ -304,87 +357,6 @@ def change_notification_day():
     return jsonify({'error': 'User not found'})
 
 
-@app.route('/send_test_notification', methods=['GET'])
-def send_test_notification():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-
-    user_id = session['user_id']
-    user = User.query.get(user_id)
-
-    if user:
-        # Create a test event for the current day
-        test_event = Event(
-            title='Test Event',
-            description='This is a test event',
-            date=datetime.now().date(),
-            notify_on_event_day=False,
-            monthly_notification=False,
-            weekly_notification=False,
-            user_id=user.id
-        )
-        db.session.add(test_event)
-        db.session.commit()
-
-        # Schedule the test event notification
-        schedule_notification(test_event, timedelta(days=0))
-
-        # Manually trigger the notification for the test event
-        send_notification(test_event.id)
-
-        flash('Test email notification sent successfully!', 'success')
-    else:
-        flash('User not found.', 'error')
-
-    return redirect(url_for('profile'))
-
-
-@app.route('/send_notification_manually')
-def send_notification_manually():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-
-    user_id = session['user_id']
-    user = User.query.get(user_id)
-
-    if user:
-        # Get all future events for the user from the current day
-        current_day = datetime.now().date()
-        future_events = Event.query.filter(
-            Event.user_id == user.id,
-            Event.date >= current_day
-        ).order_by(Event.date).all()
-
-        # Create a list to store the events for the email
-        email_events = []
-
-        # Add future events to the email_events list
-        if future_events:
-            email_events.append("Future events:")
-            for event in future_events:
-                email_events.append(f"- {event.title} ({event.date})")
-
-            # Render the email template with the event details
-            email_content = render_template('notification_email.html', user=user, events=email_events)
-
-            # Create the email message
-            msg = Message("Test Event Notification", sender='inthisweeknotification@gmail.com')
-            try:
-                # Send the email
-                mail.send(msg)
-                flash('Test email notification sent successfully!', 'success')
-                print("Sent!")
-            except Exception as e:
-                flash('Failed to send test email notification.', 'error')
-                print(str(e))
-                print("not sent :(")
-            else:
-                flash('No future events to notify.', 'info')
-                print("else?")
-
-            return redirect(url_for('dashboard'))
-
-
 @app.route('/create_event', methods=['GET', 'POST'])
 def create_event():
     if 'user_id' not in session:
@@ -403,6 +375,7 @@ def create_event():
             event = Event(
                 title=form.title.data,
                 description=form.description.data,
+                money=form.money.data,
                 date=datetime.strptime(form.date.data, '%Y-%m-%d').date(),
                 user_id=session['user_id'],
                 notify_on_event_day=form.notify_on_event_day.data,
@@ -445,6 +418,12 @@ def delete_event(event_id):
 
 @app.route('/change-password', methods=['GET', 'POST'])
 def change_password():
+    if 'user_id' not in session:
+        flash('Please log in to view your profile.', 'error')
+        return redirect('/login')
+
+    user_id = session['user_id']
+    user = User.query.get(user_id)
     form = ChangePasswordForm()
     if form.validate_on_submit():
         current_password = form.current_password.data
@@ -473,6 +452,12 @@ def change_password():
 
 @app.route('/change-email', methods=['GET', 'POST'])
 def change_email():
+    if 'user_id' not in session:
+        flash('Please log in to view your profile.', 'error')
+        return redirect('/login')
+
+    user_id = session['user_id']
+    user = User.query.get(user_id)
     form = ChangeEmailForm()
     if form.validate_on_submit():
         new_email = form.new_email.data
@@ -536,4 +521,5 @@ def reset_password(token):
 
 
 if __name__ == '__main__':
-    app.run(port=int(os.environ.get('PORT', 5000)))
+    scheduler.start()
+    app.run(debug=True)

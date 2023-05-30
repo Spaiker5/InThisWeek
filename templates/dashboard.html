@@ -3,13 +3,17 @@
 {% block content %}
   <h1>Welcome, {{ current_user.username }}!</h1>
 
+  <h1>In this week payments: {{ value_7_days }}</h1>
+  <h1>In this month payments: {{ value_30_days }}</h1>
+
   <h2>Upcoming Events:</h2>
   {% if events %}
     <ul>
       {% for event in events %}
         <li>
-          <h3>{{ event.title }}</h3>
+          <h2>{{ event.title }}</h2>
           <p>{{ event.description }}</p>
+          <p>Value:{{ event.money }}</p>
           <p>Date: {{ event.date }}</p>
         </li>
       {% endfor %}

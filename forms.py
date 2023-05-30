@@ -1,6 +1,6 @@
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, SelectField, TextAreaField, DateField, TimeField, BooleanField, \
-    SubmitField
+    SubmitField, IntegerField
 from wtforms.validators import DataRequired, Email, EqualTo
 from flask_wtf.csrf import CSRFProtect
 
@@ -28,11 +28,11 @@ class RegisterForm(FlaskForm):
 class CreateEventForm(FlaskForm):
     title = StringField('Title', validators=[DataRequired()])
     description = TextAreaField('Description', validators=[DataRequired()])
+    money = IntegerField('Cash Amount')
     date = StringField('Date', validators=[DataRequired()])
     notify_on_event_day = BooleanField('Notify on event day')
     monthly_notification = BooleanField('Notify monthly')
     weekly_notification = BooleanField('Notify weekly')
-
 
 
 class ChangePasswordForm(FlaskForm):
@@ -57,8 +57,12 @@ class ResetPasswordForm(FlaskForm):
     confirm_password = PasswordField('Confirm Password', validators=[DataRequired(), EqualTo('password')])
     submit = SubmitField('Reset Password')
 
+
 class ChangeNotificationDayForm(FlaskForm):
-    notification_day = SelectField('Notification Day', choices=[('Monday', 'Monday'), ('Tuesday', 'Tuesday'), ('Wednesday', 'Wednesday'), ('Thursday', 'Thursday'), ('Friday', 'Friday'), ('Saturday', 'Saturday'), ('Sunday', 'Sunday')], validators=[DataRequired()])
+    notification_day = SelectField('Notification Day',
+                                   choices=[('Monday', 'Monday'), ('Tuesday', 'Tuesday'), ('Wednesday', 'Wednesday'),
+                                            ('Thursday', 'Thursday'), ('Friday', 'Friday'), ('Saturday', 'Saturday'),
+                                            ('Sunday', 'Sunday')], validators=[DataRequired()])
     submit = SubmitField('Save Changes')
 
 
