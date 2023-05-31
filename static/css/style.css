@@ -1,5 +1,31 @@
 /* styles.css */
 
+/* Responsive layout for events */
+@media (min-width: 576px) {
+  .row-event .card {
+    flex-basis: 48%;
+  }
+}
+
+@media (min-width: 768px) {
+  .row-event .card {
+    flex-basis: 31%;
+  }
+}
+
+@media (min-width: 992px) {
+  .row-event .card {
+    flex-basis: 23%;
+  }
+}
+
+@media (min-width: 1200px) {
+  .row-event .card {
+    flex-basis: 18%;
+  }
+}
+
+
 /* Set primary and secondary colors to orange */
 :root {
     --primary-color: #FF9800;

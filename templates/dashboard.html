@@ -1,24 +1,68 @@
 {% extends 'base.html' %}
 
 {% block content %}
-  <h1>Welcome, {{ current_user.username }}!</h1>
+<h1>Welcome, {{ current_user.username }}!</h1>
 
-  <h1>In this week payments: {{ value_7_days }}</h1>
-  <h1>In this month payments: {{ value_30_days }}</h1>
+<h1>In this week payments: {{ value_7_days }}</h1>
+<h1>In this month payments: {{ value_30_days }}</h1>
 
-  <h2>Upcoming Events:</h2>
-  {% if events %}
-    <ul>
-      {% for event in events %}
-        <li>
-          <h2>{{ event.title }}</h2>
-          <p>{{ event.description }}</p>
-          <p>Value:{{ event.money }}</p>
-          <p>Date: {{ event.date }}</p>
-        </li>
+<h2>Upcoming Events:</h2>
+<div class="row row-event">
+  <div class="col-md-6">
+    <h3>This Week:</h3>
+    {% if weekly_events %}
+    <div class="row">
+      {% for event in weekly_events %}
+      <div class="col-sm-6">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">{{ event.title }}</h5>
+            <p class="card-text">{{ event.description }}</p>
+            <p class="card-text">Value: {{ event.money }}</p>
+            <p class="card-text">Date: {{ event.date }}</p>
+            <form action="{{ url_for('delete_event', event_id=event.id) }}" method="post">
+              <!-- Add the CSRF token input field -->
+              {{ form.csrf_token }}
+
+              <button class="btn btn-danger" type="submit">Delete</button>
+            </form>
+          </div>
+        </div>
+      </div>
       {% endfor %}
-    </ul>
-  {% else %}
+    </div>
+    {% else %}
+    <p>No upcoming events for this week.</p>
+    {% endif %}
+  </div>
+  <div class="col-md-6">
+    <h3>All Events:</h3>
+    {% if events %}
+    <div class="row">
+      {% for event in events %}
+      {% if event not in weekly_events %}
+      <div class="col-sm-6">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">{{ event.title }}</h5>
+            <p class="card-text">{{ event.description }}</p>
+            <p class="card-text">Value: {{ event.money }}</p>
+            <p class="card-text">Date: {{ event.date }}</p>
+            <form action="{{ url_for('delete_event', event_id=event.id) }}" method="post">
+              <!-- Add the CSRF token input field -->
+              {{ form.csrf_token }}
+
+              <button class="btn btn-danger" type="submit">Delete</button>
+            </form>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% else %}
     <p>No upcoming events.</p>
-  {% endif %}
+    {% endif %}
+  </div>
+</div>
 {% endblock %}

@@ -1,14 +1,16 @@
-from flask import Flask, render_template, request, session, redirect, flash, url_for
-from flask_sqlalchemy import SQLAlchemy
-from flask_bcrypt import Bcrypt
-from forms import *
-from datetime import datetime, timedelta
-from apscheduler.schedulers.background import BackgroundScheduler
-from flask_wtf.csrf import CSRFProtect
-from flask_mail import Message, Mail
-from datetime import date
-from sqlalchemy import true, false
 import calendar
+from datetime import date
+from datetime import datetime, timedelta
+
+from apscheduler.schedulers.background import BackgroundScheduler
+from flask import Flask, render_template, request, session, redirect, flash, url_for
+from flask_bcrypt import Bcrypt
+from flask_mail import Message, Mail
+from flask_sqlalchemy import SQLAlchemy
+from flask_wtf.csrf import CSRFProtect
+from sqlalchemy import true
+
+from forms import *
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///events.db'
@@ -228,6 +230,100 @@ def index():
     return render_template('index.html')
 
 
+@app.route('/dashboard')
+def dashboard():
+    if not session.get('user_id'):
+        return redirect(url_for('login'))
+
+    user = load_user(session['user_id'])
+
+    if user is not None:
+        # Get upcoming events with comments
+        upcoming_events = get_upcoming_events(user)
+
+        # Get upcoming weekly notifications
+        upcoming_weekly_events = get_weekly_notifications(user)
+
+        # Get upcoming monthly notifications
+        upcoming_monthly_events = get_monthly_notifications(user)
+
+        # Calculate the value of money from events in the next 7 days and 30 days
+        value_7_days = sum(event.money for event in upcoming_events if event.date <= date.today() + timedelta(days=7))
+        value_30_days = sum(event.money for event in upcoming_events if event.date <= date.today() + timedelta(days=30))
+
+        # Create an instance of the CreateEventForm
+        form = CreateEventForm()
+
+        return render_template('dashboard.html', user=user, events=upcoming_events,
+                               weekly_events=upcoming_weekly_events, monthly_events=upcoming_monthly_events,
+                               value_7_days=value_7_days, value_30_days=value_30_days, form=form)
+    else:
+        flash('User not found')
+    return redirect(url_for('login'))
+
+
+@app.route('/create_event', methods=['GET', 'POST'])
+def create_event():
+    if 'user_id' not in session:
+        flash('Please log in to view your profile.', 'error')
+        return redirect('/login')
+
+    user_id = session['user_id']
+    user = User.query.get(user_id)
+
+    form = CreateEventForm()
+
+    if request.method == 'POST':
+        # Process the form submission
+        if form.validate_on_submit():
+            # Save the event to the database
+            event = Event(
+                title=form.title.data,
+                description=form.description.data,
+                money=form.money.data,
+                date=datetime.strptime(form.date.data, '%Y-%m-%d').date(),
+                user_id=session['user_id'],
+                notify_on_event_day=form.notify_on_event_day.data,
+                monthly_notification=form.monthly_notification.data,
+                weekly_notification=form.weekly_notification.data
+            )
+            db.session.add(event)
+            db.session.commit()
+
+            # Schedule notifications if enabled
+            if form.notify_on_event_day.data:
+                schedule_notification(event, timedelta(days=0))
+            if form.monthly_notification.data:
+                schedule_notification(event, timedelta(days=30))
+            if form.weekly_notification.data:
+                schedule_notification(event, timedelta(days=7))
+
+            flash('Event created successfully!', 'success')
+            return redirect(url_for('dashboard'))
+
+    return render_template('create_event.html', form=form)
+
+
+@app.route('/delete_event/<int:event_id>', methods=['POST'])
+def delete_event(event_id):
+    if not session.get('user_id'):
+        return redirect(url_for('login'))
+
+    event = Event.query.get(event_id)
+    if event and event.user_id == session['user_id']:
+        # Remove scheduled notifications
+        try:
+            scheduler.remove_job(f'event_notification_{event.id}')
+        except:
+            db.session.delete(event)
+            db.session.commit()
+            flash('Event deleted successfully!', 'success')
+    else:
+        flash('Event not found or you do not have permission to delete it.', 'error')
+
+    return redirect(url_for('dashboard'))
+
+
 @app.route('/profile', methods=['GET', 'POST'])
 def profile():
     if 'user_id' not in session:
@@ -306,35 +402,6 @@ def logout():
     return redirect(url_for('index'))
 
 
-@app.route('/dashboard')
-def dashboard():
-    if not session.get('user_id'):
-        return redirect(url_for('login'))
-
-    user = load_user(session['user_id'])
-
-    if user is not None:
-        # Get upcoming events with comments
-        upcoming_events = get_upcoming_events(user)
-
-        # Get upcoming weekly notifications
-        upcoming_weekly_events = get_weekly_notifications(user)
-
-        # Get upcoming monthly notifications
-        upcoming_monthly_events = get_monthly_notifications(user)
-
-        # Calculate the value of money from events in the next 7 days and 30 days
-        value_7_days = sum(event.money for event in upcoming_events if event.date <= date.today() + timedelta(days=7))
-        value_30_days = sum(event.money for event in upcoming_events if event.date <= date.today() + timedelta(days=30))
-
-        return render_template('dashboard.html', user=user, events=upcoming_events,
-                               weekly_events=upcoming_weekly_events, monthly_events=upcoming_monthly_events,
-                               value_7_days=value_7_days, value_30_days=value_30_days)
-    else:
-        flash('User not found')
-    return redirect(url_for('login'))
-
-
 @app.route('/change-notification-day', methods=['POST'])
 def change_notification_day():
     if 'user_id' not in session:
@@ -355,65 +422,6 @@ def change_notification_day():
             return jsonify({'error': 'Invalid form data'})
 
     return jsonify({'error': 'User not found'})
-
-
-@app.route('/create_event', methods=['GET', 'POST'])
-def create_event():
-    if 'user_id' not in session:
-        flash('Please log in to view your profile.', 'error')
-        return redirect('/login')
-
-    user_id = session['user_id']
-    user = User.query.get(user_id)
-
-    form = CreateEventForm()
-
-    if request.method == 'POST':
-        # Process the form submission
-        if form.validate_on_submit():
-            # Save the event to the database
-            event = Event(
-                title=form.title.data,
-                description=form.description.data,
-                money=form.money.data,
-                date=datetime.strptime(form.date.data, '%Y-%m-%d').date(),
-                user_id=session['user_id'],
-                notify_on_event_day=form.notify_on_event_day.data,
-                monthly_notification=form.monthly_notification.data,
-                weekly_notification=form.weekly_notification.data
-            )
-            db.session.add(event)
-            db.session.commit()
-
-            # Schedule notifications if enabled
-            if form.notify_on_event_day.data:
-                schedule_notification(event, timedelta(days=0))
-            if form.monthly_notification.data:
-                schedule_notification(event, timedelta(days=30))
-            if form.weekly_notification.data:
-                schedule_notification(event, timedelta(days=7))
-
-            flash('Event created successfully!', 'success')
-            return redirect(url_for('dashboard'))
-
-    return render_template('create_event.html', form=form)
-
-
-@app.route('/delete_event/<int:event_id>', methods=['POST'])
-def delete_event(event_id):
-    if not session.get('user_id'):
-        return redirect(url_for('login'))
-
-    event = Event.query.get(event_id)
-    if event and event.user_id == session['user_id']:
-        # Remove scheduled notifications
-        scheduler.remove_job(f'event_notification_{event.id}')
-
-        db.session.delete(event)
-        db.session.commit()
-        flash('Event deleted successfully!', 'success')
-
-    return redirect(url_for('dashboard'))
 
 
 @app.route('/change-password', methods=['GET', 'POST'])
